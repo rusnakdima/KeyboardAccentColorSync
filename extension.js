@@ -7,6 +7,8 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as QuickSettings from "resource:///org/gnome/shell/ui/quickSettings.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
+import ByteArray from "gi://ByteArray";
+
 const COLOR_MAP = {
   default: { hex: "#1c71d8", name: "Blue" },
   blue: { hex: "#1c71d8", name: "Blue" },
@@ -45,6 +47,23 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
         "Keyboard RGB Color"
       );
 
+      const scrollBox = new St.ScrollView({
+        style_class: "keyboard-accent-color-scrollbox",
+        hscroll: Clutter.ScrollbarPolicy.NEVER,
+        vscroll: Clutter.ScrollbarPolicy.AUTOMATIC,
+        overlay_scrollbars: true,
+
+        vexpand: true,
+
+        style: "max-height: 100px;",
+      });
+
+      this._colorBox = new St.BoxLayout({
+        style_class: "keyboard-accent-color-box",
+        vertical: true,
+        style: "spacing: 4px;",
+      });
+
       Object.entries(COLOR_MAP).forEach(([key, value]) => {
         if (key === "default") return;
 
@@ -66,8 +85,12 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
           menu.close();
         });
 
-        menu.addMenuItem(item);
+        this._colorBox.add_child(item);
       });
+
+      scrollBox.add_child(this._colorBox);
+
+      menu.addMenuItem(scrollBox);
 
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
