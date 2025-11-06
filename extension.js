@@ -1,4 +1,3 @@
-// extension.js
 import GObject from "gi://GObject";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -27,29 +26,25 @@ const DEVICE_ID = 0;
 const DESIRED_BRIGHTNESS = 50;
 const PROFILE_NAME = "accent_profile";
 
-// Create a QuickMenuToggle for our keyboard functionality
 const KeyboardQuickMenuToggle = GObject.registerClass(
   class KeyboardQuickMenuToggle extends QuickSettings.QuickMenuToggle {
     _init(ext) {
       super._init({
-        title: "Keyboard", // Initial title
+        title: "Keyboard",
         iconName: "input-keyboard-symbolic",
         toggleMode: false,
       });
 
       this._ext = ext;
 
-      // Set up the menu
       const { menu } = this;
 
-      // Add header
       menu.setHeader(
         "input-keyboard-symbolic",
         "Keyboard RGB",
         "Keyboard RGB Color"
       );
 
-      // Add color items to submenu
       Object.entries(COLOR_MAP).forEach(([key, value]) => {
         if (key === "default") return;
 
@@ -67,37 +62,32 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
         item.add_child(box);
 
         item.connect("activate", () => {
-          ext.setKeyboardColorByKey(key); // This will update ext._lastSetColorKey
+          ext.setKeyboardColorByKey(key);
           menu.close();
         });
 
         menu.addMenuItem(item);
       });
 
-      // Add separator
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
-      // Add sync button
       const syncItem = new PopupMenu.PopupMenuItem("Sync with System Accent");
       syncItem.connect("activate", () => {
-        ext.syncWithSystemAccent(); // This will update ext._lastSetColorKey
+        ext.syncWithSystemAccent();
         menu.close();
       });
       menu.addMenuItem(syncItem);
 
-      // Update title initially based on the extension's state
       this._updateTitle();
     }
 
-    // Update the title based on the extension's internal state of the last set color
     _updateTitle() {
-      const lastSetColorKey = this._ext.getLastSetColorKey(); // Get the last set color key from the extension
+      const lastSetColorKey = this._ext.getLastSetColorKey();
       this.title = COLOR_MAP[lastSetColorKey]?.name || "Keyboard";
     }
   }
 );
 
-// Create a SystemIndicator that contains our QuickMenuToggle
 const KeyboardSystemIndicator = GObject.registerClass(
   class KeyboardSystemIndicator extends QuickSettings.SystemIndicator {
     _init(ext) {
@@ -105,22 +95,18 @@ const KeyboardSystemIndicator = GObject.registerClass(
 
       this._ext = ext;
 
-      // Create the indicator icon
       this._indicator = this._addIndicator();
       this._indicator.icon_name = "input-keyboard-symbolic";
-      // Hide from top status bar (tray)
+
       this._indicator.visible = false;
 
-      // Create the toggle menu and associate it with the indicator
       const toggle = new KeyboardQuickMenuToggle(ext);
       this.quickSettingsItems.push(toggle);
 
-      // Add the indicator to the panel and the toggle to the menu
       Main.panel.statusArea.quickSettings.addExternalIndicator(this);
     }
 
     destroy() {
-      // Clean up
       this.quickSettingsItems.forEach((item) => item.destroy());
       this._indicator.destroy();
       super.destroy();
@@ -135,7 +121,7 @@ export default class KeyboardAccentSyncExtension {
     this._cid = null;
     this._manual = false;
     this._prev = null;
-    this._lastSetColorKey = "blue"; // Initialize with a default color key
+    this._lastSetColorKey = "blue";
   }
 
   getCurrentAccent() {
@@ -145,7 +131,6 @@ export default class KeyboardAccentSyncExtension {
     return a === "default" ? "blue" : a;
   }
 
-  // Method to get the last set color key
   getLastSetColorKey() {
     return this._lastSetColorKey;
   }
@@ -160,9 +145,9 @@ export default class KeyboardAccentSyncExtension {
       `[KeyboardAccentSync] Setting keyboard color manually to: ${k} (${c.name}, ${c.hex})`
     );
     this._manual = true;
-    this._lastSetColorKey = k; // Update the last set color key
+    this._lastSetColorKey = k;
     this._set(c.hex);
-    this._updateUI(); // Update the button title
+    this._updateUI();
   }
 
   syncWithSystemAccent() {
@@ -173,9 +158,9 @@ export default class KeyboardAccentSyncExtension {
     log(
       `[KeyboardAccentSync] Syncing - Current accent: ${currentAccent}, Color: ${c.name}, Hex: ${c.hex}`
     );
-    this._lastSetColorKey = currentAccent; // Update the last set color key to the system accent
+    this._lastSetColorKey = currentAccent;
     this._set(c.hex);
-    this._updateUI(); // Update the button title
+    this._updateUI();
   }
 
   _onChanged() {
@@ -186,7 +171,7 @@ export default class KeyboardAccentSyncExtension {
       log(
         `[KeyboardAccentSync] Skipping update because manual mode is active.`
       );
-      return; // Only update if not in manual mode
+      return;
     }
     const cur = this.getCurrentAccent();
     log(
@@ -202,9 +187,9 @@ export default class KeyboardAccentSyncExtension {
       log(
         `[KeyboardAccentSync] Updating keyboard color to: ${cur} (${c.name}, ${c.hex})`
       );
-      this._lastSetColorKey = cur; // Update the last set color key to the new system accent
+      this._lastSetColorKey = cur;
       this._set(c.hex);
-      this._updateUI(); // Update the button title
+      this._updateUI();
     } else {
       log(
         `[KeyboardAccentSync] Could not find color definition for accent: ${cur}`
@@ -215,7 +200,7 @@ export default class KeyboardAccentSyncExtension {
   _updateUI() {
     if (this._indicator && this._indicator.quickSettingsItems.length > 0) {
       const toggle = this._indicator.quickSettingsItems[0];
-      toggle._updateTitle(); // Call the toggle's update method which gets the color from the extension
+      toggle._updateTitle();
       log(
         `[KeyboardAccentSync] Updated UI title based on lastSetColorKey: ${this._lastSetColorKey}`
       );
@@ -234,7 +219,6 @@ export default class KeyboardAccentSyncExtension {
     }
     log(`[KeyboardAccentSync] openrgb command found.`);
 
-    // Try profile first
     try {
       log(
         `[KeyboardAccentSync] Trying profile command: openrgb --profile ${PROFILE_NAME} --color ${h}`
@@ -259,12 +243,11 @@ export default class KeyboardAccentSyncExtension {
       log(`[KeyboardAccentSync] Exception during profile command: ${e}`);
     }
 
-    // Fallback to direct command
     log(
       `[KeyboardAccentSync] Trying direct command: openrgb --device ${DEVICE_ID} --mode static --color ${h} --brightness ${DESIRED_BRIGHTNESS}`
     );
     const [async_success, async_pid] = GLib.spawn_async(
-      null, // working directory
+      null,
       [
         "openrgb",
         "--device",
@@ -276,9 +259,9 @@ export default class KeyboardAccentSyncExtension {
         "--brightness",
         DESIRED_BRIGHTNESS.toString(),
       ],
-      null, // environment
+      null,
       GLib.SpawnFlags.SEARCH_PATH,
-      null // child setup function
+      null
     );
 
     if (async_success) {
@@ -296,16 +279,15 @@ export default class KeyboardAccentSyncExtension {
       schema: "org.gnome.desktop.interface",
     });
     this._prev = this.getCurrentAccent();
-    // Initialize _lastSetColorKey based on the current system accent when the extension is enabled
+
     this._lastSetColorKey = this.getCurrentAccent();
     log(
       `[KeyboardAccentSync] Initialized _prev: ${this._prev}, _lastSetColorKey: ${this._lastSetColorKey}`
     );
 
-    // Create the system indicator
     this._indicator = new KeyboardSystemIndicator(this);
 
-    this.syncWithSystemAccent(); // This will also update _lastSetColorKey and UI
+    this.syncWithSystemAccent();
     this._cid = this._settings.connect("changed::accent-color", () =>
       this._onChanged()
     );
@@ -323,7 +305,6 @@ export default class KeyboardAccentSyncExtension {
       );
     }
 
-    // Clean up
     if (this._indicator) {
       this._indicator.destroy();
       log(`[KeyboardAccentSync] Destroyed indicator.`);
