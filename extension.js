@@ -7,10 +7,7 @@ import * as Main from "resource:///org/gnome/shell/ui/main.js";
 import * as QuickSettings from "resource:///org/gnome/shell/ui/quickSettings.js";
 import * as PopupMenu from "resource:///org/gnome/shell/ui/popupMenu.js";
 
-import ByteArray from "gi://ByteArray";
-
 const COLOR_MAP = {
-  default: { hex: "#1c71d8", name: "Blue" },
   blue: { hex: "#1c71d8", name: "Blue" },
   teal: { hex: "#26a269", name: "Teal" },
   green: { hex: "#2ec27e", name: "Green" },
@@ -25,79 +22,80 @@ const COLOR_MAP = {
 };
 
 const DEVICE_ID = 0;
-const DESIRED_BRIGHTNESS = 50;
 const PROFILE_NAME = "accent_profile";
 
 const KeyboardQuickMenuToggle = GObject.registerClass(
   class KeyboardQuickMenuToggle extends QuickSettings.QuickMenuToggle {
     _init(ext) {
       super._init({
-        title: "Keyboard",
+        title: "Keyboard RGB",
         iconName: "input-keyboard-symbolic",
         toggleMode: false,
       });
 
       this._ext = ext;
-
       const { menu } = this;
 
       menu.setHeader(
         "input-keyboard-symbolic",
         "Keyboard RGB",
-        "Keyboard RGB Color"
+        "Configure keyboard backlight color"
       );
 
-      const scrollBox = new St.ScrollView({
-        style_class: "keyboard-accent-color-scrollbox",
-        hscroll: Clutter.ScrollbarPolicy.NEVER,
-        vscroll: Clutter.ScrollbarPolicy.AUTOMATIC,
-        overlay_scrollbars: true,
-
-        vexpand: true,
-
-        style: "max-height: 100px;",
-      });
-
-      this._colorBox = new St.BoxLayout({
-        style_class: "keyboard-accent-color-box",
-        vertical: true,
-        style: "spacing: 4px;",
-      });
+      const colorSection = new PopupMenu.PopupMenuSection();
 
       Object.entries(COLOR_MAP).forEach(([key, value]) => {
-        if (key === "default") return;
-
-        const item = new PopupMenu.PopupBaseMenuItem();
-        const box = new St.BoxLayout({ style: "spacing: 12px;" });
-
-        const colorBox = new St.Widget({
-          style: `background-color: ${value.hex}; border-radius: 99px; width: 24px; height: 24px;`,
+        const item = new PopupMenu.PopupBaseMenuItem({
+          style_class: "popup-menu-item",
         });
 
-        const label = new St.Label({ text: value.name });
+        const box = new St.BoxLayout({
+          style: "spacing: 12px;",
+          x_expand: true,
+        });
 
-        box.add_child(colorBox);
+        const colorCircle = new St.Widget({
+          style: `background-color: ${value.hex}; 
+                  border-radius: 12px; 
+                  width: 24px; 
+                  height: 24px;`,
+        });
+
+        const label = new St.Label({
+          text: value.name,
+          y_align: Clutter.ActorAlign.CENTER,
+        });
+
+        box.add_child(colorCircle);
         box.add_child(label);
         item.add_child(box);
 
         item.connect("activate", () => {
-          ext.setKeyboardColorByKey(key);
-          menu.close();
+          this._ext.setKeyboardColorByKey(key);
+          this._updateTitle();
         });
 
-        this._colorBox.add_child(item);
+        colorSection.addMenuItem(item);
       });
 
-      scrollBox.add_child(this._colorBox);
+      const scrollView = new St.ScrollView({
+        style_class: "keyboard-accent-color-scrollbox",
+        hscrollbar_policy: St.PolicyType.NEVER,
+        vscrollbar_policy: St.PolicyType.AUTOMATIC,
+        overlay_scrollbars: true,
+        style: "max-height: 150px;",
+      });
 
-      menu.addMenuItem(scrollBox);
+      scrollView.add_child(colorSection.actor);
+
+      menu.box.add_child(scrollView);
 
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
       const syncItem = new PopupMenu.PopupMenuItem("Sync with System Accent");
       syncItem.connect("activate", () => {
-        ext.syncWithSystemAccent();
-        menu.close();
+        this._ext.syncWithSystemAccent();
+        this._updateTitle();
       });
       menu.addMenuItem(syncItem);
 
@@ -105,171 +103,203 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
     }
 
     _updateTitle() {
-      const lastSetColorKey = this._ext.getLastSetColorKey();
-      this.title = COLOR_MAP[lastSetColorKey]?.name || "Keyboard";
-    }
-  }
-);
-
-const KeyboardSystemIndicator = GObject.registerClass(
-  class KeyboardSystemIndicator extends QuickSettings.SystemIndicator {
-    _init(ext) {
-      super._init();
-
-      this._ext = ext;
-
-      this._indicator = this._addIndicator();
-      this._indicator.icon_name = "input-keyboard-symbolic";
-
-      this._indicator.visible = false;
-
-      const toggle = new KeyboardQuickMenuToggle(ext);
-      this.quickSettingsItems.push(toggle);
-
-      Main.panel.statusArea.quickSettings.addExternalIndicator(this);
-    }
-
-    destroy() {
-      this.quickSettingsItems.forEach((item) => item.destroy());
-      this._indicator.destroy();
-      super.destroy();
+      const colorKey = this._ext.getLastSetColorKey();
+      const colorInfo = COLOR_MAP[colorKey];
+      this.title = colorInfo ? `Keyboard: ${colorInfo.name}` : "Keyboard RGB";
     }
   }
 );
 
 export default class KeyboardAccentSyncExtension {
   constructor() {
-    this._indicator = null;
+    this._toggle = null;
     this._settings = null;
-    this._cid = null;
-    this._manual = false;
-    this._prev = null;
+    this._signalId = null;
+    this._manualMode = false;
     this._lastSetColorKey = "blue";
+    this._currentBrightness = null;
   }
 
-  getCurrentAccent() {
-    if (!this._settings) return "blue";
-    const a = this._settings.get_string("accent-color");
-    log(`[KeyboardAccentSync] Current system accent-color: ${a}`);
-    return a === "default" ? "blue" : a;
+  enable() {
+    log("[KeyboardAccentSync] Enabling extension");
+
+    this._settings = new Gio.Settings({
+      schema: "org.gnome.desktop.interface",
+    });
+
+    this._readCurrentBrightness();
+
+    const currentAccent = this._getCurrentAccent();
+    this._lastSetColorKey = currentAccent;
+
+    this._toggle = new KeyboardQuickMenuToggle(this);
+
+    if (typeof Main.panel.statusArea.quickSettings.addMenuItem === "function") {
+      Main.panel.statusArea.quickSettings.addMenuItem(this._toggle);
+    } else {
+      log("[KeyboardAccentSync] Fallback: adding to menu grid directly");
+      Main.panel.statusArea.quickSettings.menu._grid.add_child(this._toggle);
+    }
+
+    this.syncWithSystemAccent();
+
+    this._signalId = this._settings.connect("changed::accent-color", () => {
+      this._onAccentColorChanged();
+    });
+
+    log("[KeyboardAccentSync] Extension enabled");
+  }
+
+  disable() {
+    log("[KeyboardAccentSync] Disabling extension");
+
+    if (this._signalId && this._settings) {
+      this._settings.disconnect(this._signalId);
+      this._signalId = null;
+    }
+
+    if (this._toggle) {
+      if (
+        typeof Main.panel.statusArea.quickSettings.removeMenuItem === "function"
+      ) {
+        Main.panel.statusArea.quickSettings.removeMenuItem(this._toggle);
+      } else {
+        this._toggle.get_parent()?.remove_child(this._toggle);
+      }
+      this._toggle.destroy();
+      this._toggle = null;
+    }
+
+    this._settings = null;
+    this._manualMode = false;
+    this._lastSetColorKey = null;
+    this._currentBrightness = null;
+
+    log("[KeyboardAccentSync] Extension disabled");
   }
 
   getLastSetColorKey() {
     return this._lastSetColorKey;
   }
 
-  setKeyboardColorByKey(k) {
-    const c = COLOR_MAP[k];
-    if (!c) {
-      log(`[KeyboardAccentSync] Invalid color key: ${k}`);
+  setKeyboardColorByKey(key) {
+    const colorInfo = COLOR_MAP[key];
+    if (!colorInfo) {
+      log(`[KeyboardAccentSync] Invalid color key: ${key}`);
       return;
     }
+
     log(
-      `[KeyboardAccentSync] Setting keyboard color manually to: ${k} (${c.name}, ${c.hex})`
+      `[KeyboardAccentSync] Manual color change to: ${key} (${colorInfo.name})`
     );
-    this._manual = true;
-    this._lastSetColorKey = k;
-    this._set(c.hex);
-    this._updateUI();
+    this._manualMode = true;
+    this._lastSetColorKey = key;
+    this._applyColor(colorInfo.hex);
   }
 
   syncWithSystemAccent() {
-    log(`[KeyboardAccentSync] Syncing with system accent...`);
-    this._manual = false;
-    const currentAccent = this.getCurrentAccent();
-    const c = COLOR_MAP[currentAccent] || COLOR_MAP.blue;
-    log(
-      `[KeyboardAccentSync] Syncing - Current accent: ${currentAccent}, Color: ${c.name}, Hex: ${c.hex}`
-    );
-    this._lastSetColorKey = currentAccent;
-    this._set(c.hex);
-    this._updateUI();
+    log("[KeyboardAccentSync] Syncing with system accent");
+    this._manualMode = false;
+
+    const accentKey = this._getCurrentAccent();
+    const colorInfo = COLOR_MAP[accentKey] || COLOR_MAP.blue;
+
+    this._lastSetColorKey = accentKey;
+    this._applyColor(colorInfo.hex);
   }
 
-  _onChanged() {
-    log(
-      `[KeyboardAccentSync] System accent-color changed. Manual mode: ${this._manual}`
-    );
-    if (this._manual) {
-      log(
-        `[KeyboardAccentSync] Skipping update because manual mode is active.`
-      );
-      return;
-    }
-    const cur = this.getCurrentAccent();
-    log(
-      `[KeyboardAccentSync] Previous accent: ${this._prev}, New accent: ${cur}`
-    );
-    if (cur === this._prev) {
-      log(`[KeyboardAccentSync] Accent didn't actually change, skipping.`);
-      return;
-    }
-    this._prev = cur;
-    const c = COLOR_MAP[cur];
-    if (c) {
-      log(
-        `[KeyboardAccentSync] Updating keyboard color to: ${cur} (${c.name}, ${c.hex})`
-      );
-      this._lastSetColorKey = cur;
-      this._set(c.hex);
-      this._updateUI();
-    } else {
-      log(
-        `[KeyboardAccentSync] Could not find color definition for accent: ${cur}`
-      );
-    }
+  _getCurrentAccent() {
+    if (!this._settings) return "blue";
+
+    const accent = this._settings.get_string("accent-color");
+    const normalized = accent === "default" ? "blue" : accent;
+
+    log(`[KeyboardAccentSync] System accent: ${accent} -> ${normalized}`);
+    return normalized;
   }
 
-  _updateUI() {
-    if (this._indicator && this._indicator.quickSettingsItems.length > 0) {
-      const toggle = this._indicator.quickSettingsItems[0];
-      toggle._updateTitle();
-      log(
-        `[KeyboardAccentSync] Updated UI title based on lastSetColorKey: ${this._lastSetColorKey}`
-      );
+  _onAccentColorChanged() {
+    if (this._manualMode) {
+      log("[KeyboardAccentSync] Ignoring system change (manual mode active)");
+      return;
+    }
+
+    const accentKey = this._getCurrentAccent();
+    if (accentKey === this._lastSetColorKey) {
+      log("[KeyboardAccentSync] Accent unchanged, skipping update");
+      return;
+    }
+
+    const colorInfo = COLOR_MAP[accentKey];
+    if (!colorInfo) {
+      log(`[KeyboardAccentSync] Unknown accent color: ${accentKey}`);
+      return;
+    }
+
+    log(`[KeyboardAccentSync] Accent changed to: ${accentKey}`);
+    this._lastSetColorKey = accentKey;
+    this._applyColor(colorInfo.hex);
+
+    if (this._toggle) {
+      this._toggle._updateTitle();
     }
   }
 
-  _set(hex) {
-    log(`[KeyboardAccentSync] Attempting to set keyboard color to: ${hex}`);
-    const h = hex.replace("#", "");
-    const [ok, , , status] = GLib.spawn_command_line_sync("which openrgb");
-    if (!ok || status !== 0) {
-      log(
-        `[KeyboardAccentSync] ERROR: openrgb command not found or failed. OK: ${ok}, Status: ${status}`
-      );
-      return;
-    }
-    log(`[KeyboardAccentSync] openrgb command found.`);
-
+  _readCurrentBrightness() {
     try {
-      log(
-        `[KeyboardAccentSync] Trying profile command: openrgb --profile ${PROFILE_NAME} --color ${h}`
+      const [ok, stdout] = GLib.spawn_command_line_sync(
+        `openrgb --device ${DEVICE_ID} --list-devices`
       );
-      const [success, stdout, stderr, exit] = GLib.spawn_command_line_sync(
-        `openrgb --profile ${PROFILE_NAME} --color ${h}`
-      );
-      log(
-        `[KeyboardAccentSync] Profile command result - Success: ${success}, Exit: ${exit}, Stdout: ${
-          stdout ? ByteArray.toString(stdout) : "N/A"
-        }, Stderr: ${stderr ? ByteArray.toString(stderr) : "N/A"}`
-      );
-      if (success && exit === 0) {
-        log(`[KeyboardAccentSync] Successfully set color using profile.`);
-        return;
-      } else {
-        log(
-          `[KeyboardAccentSync] Profile command failed or exited with non-zero code.`
-        );
+
+      if (ok && stdout) {
+        const output = new TextDecoder().decode(stdout);
+
+        const match = output.match(/brightness[:\s]+(\d+)/i);
+        if (match) {
+          this._currentBrightness = parseInt(match[1], 10);
+          log(
+            `[KeyboardAccentSync] Current brightness: ${this._currentBrightness}`
+          );
+        }
       }
     } catch (e) {
-      log(`[KeyboardAccentSync] Exception during profile command: ${e}`);
+      log(`[KeyboardAccentSync] Could not read brightness: ${e}`);
     }
 
+    if (this._currentBrightness === null) {
+      this._currentBrightness = 50;
+      log("[KeyboardAccentSync] Using default brightness: 50");
+    }
+  }
+
+  _applyColor(hexColor) {
+    const hex = hexColor.replace("#", "");
+
     log(
-      `[KeyboardAccentSync] Trying direct command: openrgb --device ${DEVICE_ID} --mode static --color ${h} --brightness ${DESIRED_BRIGHTNESS}`
+      `[KeyboardAccentSync] Applying color: ${hexColor} with brightness: ${this._currentBrightness}`
     );
-    const [async_success, async_pid] = GLib.spawn_async(
+
+    const [cmdExists] = GLib.spawn_command_line_sync("which openrgb");
+    if (!cmdExists) {
+      log("[KeyboardAccentSync] ERROR: openrgb not found in PATH");
+      this._showNotification("OpenRGB not found", "Please install OpenRGB");
+      return;
+    }
+
+    try {
+      const [success, , , exitCode] = GLib.spawn_command_line_sync(
+        `openrgb --profile ${PROFILE_NAME} --color ${hex}`
+      );
+
+      if (success && exitCode === 0) {
+        log("[KeyboardAccentSync] Color applied via profile");
+        return;
+      }
+    } catch (e) {
+      log(`[KeyboardAccentSync] Profile method failed: ${e}`);
+    }
+
+    const [spawned] = GLib.spawn_async(
       null,
       [
         "openrgb",
@@ -278,67 +308,31 @@ export default class KeyboardAccentSyncExtension {
         "--mode",
         "static",
         "--color",
-        h,
+        hex,
         "--brightness",
-        DESIRED_BRIGHTNESS.toString(),
+        this._currentBrightness.toString(),
       ],
       null,
-      GLib.SpawnFlags.SEARCH_PATH,
+      GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
       null
     );
 
-    if (async_success) {
-      log(
-        `[KeyboardAccentSync] Direct command spawned successfully with PID: ${async_pid}`
-      );
+    if (spawned) {
+      log("[KeyboardAccentSync] Color command executed");
     } else {
-      log(`[KeyboardAccentSync] ERROR: Failed to spawn direct command.`);
-    }
-  }
-
-  enable() {
-    log(`[KeyboardAccentSync] Enabling extension...`);
-    this._settings = new Gio.Settings({
-      schema: "org.gnome.desktop.interface",
-    });
-    this._prev = this.getCurrentAccent();
-
-    this._lastSetColorKey = this.getCurrentAccent();
-    log(
-      `[KeyboardAccentSync] Initialized _prev: ${this._prev}, _lastSetColorKey: ${this._lastSetColorKey}`
-    );
-
-    this._indicator = new KeyboardSystemIndicator(this);
-
-    this.syncWithSystemAccent();
-    this._cid = this._settings.connect("changed::accent-color", () =>
-      this._onChanged()
-    );
-    log(
-      `[KeyboardAccentSync] Connected to accent-color changed signal with ID: ${this._cid}`
-    );
-  }
-
-  disable() {
-    log(`[KeyboardAccentSync] Disabling extension...`);
-    if (this._cid && this._settings) {
-      this._settings.disconnect(this._cid);
-      log(
-        `[KeyboardAccentSync] Disconnected from accent-color changed signal.`
+      log("[KeyboardAccentSync] ERROR: Failed to execute openrgb");
+      this._showNotification(
+        "Failed to set color",
+        "Check OpenRGB configuration"
       );
     }
+  }
 
-    if (this._indicator) {
-      this._indicator.destroy();
-      log(`[KeyboardAccentSync] Destroyed indicator.`);
+  _showNotification(title, message) {
+    try {
+      Main.notify(title, message);
+    } catch (e) {
+      log(`[KeyboardAccentSync] Notification failed: ${e}`);
     }
-
-    this._indicator = null;
-    this._settings = null;
-    this._cid = null;
-    this._prev = null;
-    this._manual = false;
-    this._lastSetColorKey = null;
-    log(`[KeyboardAccentSync] Extension disabled.`);
   }
 }

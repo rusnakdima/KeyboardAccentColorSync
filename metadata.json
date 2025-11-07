@@ -3,7 +3,7 @@
   "description": "Synchronizes your keyboard RGB color with GNOME's accent color using OpenRGB. Only updates on actual changes and conditionally adjusts brightness.",
   "uuid": "keyboard-accent-color-sync@rusnakdima.github.com",
   "shell-version": ["46", "47", "48", "49"],
-  "version": 1,
+  "version": 2,
   "url": "https://github.com/rusnakdima/KeyboardAccentColorSync",
   "settings-schema": "org.gnome.shell.extensions.keyboard-accent-color-sync"
 }
