@@ -6,9 +6,11 @@ Synchronizes your keyboard RGB color with GNOME's accent color using OpenRGB. Th
 
 - Automatically syncs keyboard RGB color with GNOME accent color changes
 - Manual color selection from the Quick Settings panel
+- Multiple animation modes (Static, Breathing, Spectrum Cycle, Flashing, Direct)
 - "Sync with System Accent" option to re-enable automatic synchronization
 - Maintains manual control when needed
 - Uses OpenRGB for hardware control
+- Comprehensive error notifications for troubleshooting
 
 ## Prerequisites
 
@@ -59,9 +61,10 @@ sudo pacman -S openrgb
 
 1. Once installed, click on the Keyboard RGB icon in the top panel's Quick Settings
 2. Select from the available color options to manually set your keyboard color
-3. Click "Sync with System Accent" to enable automatic synchronization with GNOME accent color
-4. To temporarily disable automatic sync, manually select a color (this enters "manual mode")
-5. To re-enable synchronization, click "Sync with System Accent" again
+3. Choose from the animation modes to set your preferred keyboard effect
+4. Click "Sync with System Accent" to enable automatic synchronization with GNOME accent color
+5. To temporarily disable automatic sync, manually select a color (this enters "manual mode")
+6. To re-enable synchronization, click "Sync with System Accent" again
 
 ## Troubleshooting
 
@@ -107,6 +110,16 @@ The extension maps the following GNOME accent colors:
 - Pink (#d06387)
 - Slate (#606672)
 - Maia (#16a085)
+
+## Supported Animation Modes
+
+The extension provides the following keyboard animation modes:
+
+- Static: Solid color with no animation
+- Breathing: Pulsing animation that fades in and out
+- Spectrum Cycle: Cycling through colors of the rainbow
+- Flashing: Blinking animation
+- Direct: Direct control without effects (hardware dependent)
 
 ## Development
 

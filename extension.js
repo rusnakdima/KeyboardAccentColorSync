@@ -21,6 +21,22 @@ const COLOR_MAP = {
   maia: { hex: "#16a085", name: "Maia" },
 };
 
+const ANIMATION_MODES = [
+  { name: "Static", value: "static", description: "Solid color, no animation" },
+  { name: "Breathing", value: "breathing", description: "Pulsing animation" },
+  {
+    name: "Spectrum Cycle",
+    value: "spectrum_cycle",
+    description: "Cycling through colors",
+  },
+  { name: "Flashing", value: "flashing", description: "Blinking animation" },
+  {
+    name: "Direct",
+    value: "direct",
+    description: "Direct control (no effect)",
+  },
+];
+
 const DEVICE_ID = 0;
 const PROFILE_NAME = "accent_profile";
 
@@ -92,6 +108,38 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
 
       menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
 
+      const animationSection = new PopupMenu.PopupMenuSection();
+      const animationTitle = new PopupMenu.PopupMenuItem("Animation Mode", {
+        style_class: "popup-subtitle-menu-item",
+        reactive: false,
+        can_focus: false,
+      });
+      animationTitle.label.set_style("font-weight: bold;");
+      animationSection.addMenuItem(animationTitle);
+
+      ANIMATION_MODES.forEach((mode) => {
+        const modeItem = new PopupMenu.PopupMenuItem(
+          `${mode.name} - ${mode.description}`
+        );
+        modeItem.connect("activate", () => {
+          this._ext.setKeyboardAnimation(mode.value);
+        });
+        animationSection.addMenuItem(modeItem);
+      });
+
+      const animationScrollView = new St.ScrollView({
+        style_class: "keyboard-accent-animation-scrollbox",
+        hscrollbar_policy: St.PolicyType.NEVER,
+        vscrollbar_policy: St.PolicyType.AUTOMATIC,
+        overlay_scrollbars: true,
+        style: "max-height: 150px;",
+      });
+
+      animationScrollView.add_child(animationSection.actor);
+      menu.box.add_child(animationScrollView);
+
+      menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
       const syncItem = new PopupMenu.PopupMenuItem("Sync with System Accent");
       syncItem.connect("activate", () => {
         this._ext.syncWithSystemAccent();
@@ -105,7 +153,10 @@ const KeyboardQuickMenuToggle = GObject.registerClass(
     _updateTitle() {
       const colorKey = this._ext.getLastSetColorKey();
       const colorInfo = COLOR_MAP[colorKey];
-      this.title = colorInfo ? `Keyboard: ${colorInfo.name}` : "Keyboard RGB";
+      const animationName = this._ext.getCurrentAnimationName();
+      this.title = colorInfo
+        ? `${colorInfo.name} (${animationName})`
+        : `Keyboard RGB (${animationName})`;
     }
   }
 );
@@ -118,6 +169,7 @@ export default class KeyboardAccentSyncExtension {
     this._manualMode = false;
     this._lastSetColorKey = "blue";
     this._currentBrightness = null;
+    this._currentAnimation = "static";
   }
 
   enable() {
@@ -127,10 +179,20 @@ export default class KeyboardAccentSyncExtension {
       schema: "org.gnome.desktop.interface",
     });
 
+    log("[KeyboardAccentSync] Settings object created");
+
     this._readCurrentBrightness();
+
+    if (!this._checkOpenRGBAvailability()) {
+      this._showNotification(
+        "OpenRGB not available",
+        "Keyboard RGB control may not work properly"
+      );
+    }
 
     const currentAccent = this._getCurrentAccent();
     this._lastSetColorKey = currentAccent;
+    log(`[KeyboardAccentSync] Initial system accent: ${currentAccent}`);
 
     this._toggle = new KeyboardQuickMenuToggle(this);
 
@@ -146,6 +208,10 @@ export default class KeyboardAccentSyncExtension {
     this._signalId = this._settings.connect("changed::accent-color", () => {
       this._onAccentColorChanged();
     });
+
+    log(
+      `[KeyboardAccentSync] Connected to accent-color change signal, signal ID: ${this._signalId}`
+    );
 
     log("[KeyboardAccentSync] Extension enabled");
   }
@@ -174,6 +240,7 @@ export default class KeyboardAccentSyncExtension {
     this._manualMode = false;
     this._lastSetColorKey = null;
     this._currentBrightness = null;
+    this._currentAnimation = null;
 
     log("[KeyboardAccentSync] Extension disabled");
   }
@@ -197,6 +264,65 @@ export default class KeyboardAccentSyncExtension {
     this._applyColor(colorInfo.hex);
   }
 
+  getLastSetColorKey() {
+    return this._lastSetColorKey;
+  }
+
+  getCurrentAnimationName() {
+    const mode = ANIMATION_MODES.find(
+      (m) => m.value === this._currentAnimation
+    );
+    return mode ? mode.name : "Static";
+  }
+
+  setKeyboardColorByKey(key) {
+    const colorInfo = COLOR_MAP[key];
+    if (!colorInfo) {
+      log(`[KeyboardAccentSync] Invalid color key: ${key}`);
+      this._showNotification(
+        "Invalid Color",
+        `Color '${key}' is not supported`
+      );
+      return;
+    }
+
+    log(
+      `[KeyboardAccentSync] Manual color change to: ${key} (${colorInfo.name})`
+    );
+    this._manualMode = true;
+    this._lastSetColorKey = key;
+    this._applyColor(colorInfo.hex, this._currentAnimation);
+  }
+
+  setKeyboardAnimation(animationMode) {
+    const validMode = ANIMATION_MODES.some(
+      (mode) => mode.value === animationMode
+    );
+
+    if (!validMode) {
+      log(`[KeyboardAccentSync] Invalid animation mode: ${animationMode}`);
+      this._showNotification(
+        "Invalid Animation",
+        `Animation '${animationMode}' is not supported`
+      );
+      return;
+    }
+
+    log(`[KeyboardAccentSync] Setting animation to: ${animationMode}`);
+    this._currentAnimation = animationMode;
+
+    if (this._lastSetColorKey) {
+      const colorInfo = COLOR_MAP[this._lastSetColorKey];
+      if (colorInfo) {
+        this._applyColor(colorInfo.hex, animationMode);
+      }
+    }
+
+    if (this._toggle) {
+      this._toggle._updateTitle();
+    }
+  }
+
   syncWithSystemAccent() {
     log("[KeyboardAccentSync] Syncing with system accent");
     this._manualMode = false;
@@ -205,7 +331,7 @@ export default class KeyboardAccentSyncExtension {
     const colorInfo = COLOR_MAP[accentKey] || COLOR_MAP.blue;
 
     this._lastSetColorKey = accentKey;
-    this._applyColor(colorInfo.hex);
+    this._applyColor(colorInfo.hex, this._currentAnimation);
   }
 
   _getCurrentAccent() {
@@ -214,17 +340,27 @@ export default class KeyboardAccentSyncExtension {
     const accent = this._settings.get_string("accent-color");
     const normalized = accent === "default" ? "blue" : accent;
 
-    log(`[KeyboardAccentSync] System accent: ${accent} -> ${normalized}`);
+    log(
+      `[KeyboardAccentSync] System accent: ${accent} -> ${normalized} (in color map: ${!!COLOR_MAP[
+        normalized
+      ]})`
+    );
     return normalized;
   }
 
   _onAccentColorChanged() {
+    log("[KeyboardAccentSync] System accent color changed signal received");
+
     if (this._manualMode) {
       log("[KeyboardAccentSync] Ignoring system change (manual mode active)");
       return;
     }
 
     const accentKey = this._getCurrentAccent();
+    log(
+      `[KeyboardAccentSync] New accent color key: ${accentKey}, Last color key: ${this._lastSetColorKey}`
+    );
+
     if (accentKey === this._lastSetColorKey) {
       log("[KeyboardAccentSync] Accent unchanged, skipping update");
       return;
@@ -232,13 +368,28 @@ export default class KeyboardAccentSyncExtension {
 
     const colorInfo = COLOR_MAP[accentKey];
     if (!colorInfo) {
-      log(`[KeyboardAccentSync] Unknown accent color: ${accentKey}`);
+      log(
+        `[KeyboardAccentSync] Unknown accent color: ${accentKey}, using blue as fallback`
+      );
+
+      const fallbackColorInfo = COLOR_MAP.blue;
+      log(
+        `[KeyboardAccentSync] Applying fallback color: ${fallbackColorInfo.name} (${fallbackColorInfo.hex})`
+      );
+      this._lastSetColorKey = accentKey;
+      this._applyColor(fallbackColorInfo.hex, this._currentAnimation);
+
+      if (this._toggle) {
+        this._toggle._updateTitle();
+      }
       return;
     }
 
-    log(`[KeyboardAccentSync] Accent changed to: ${accentKey}`);
+    log(
+      `[KeyboardAccentSync] Accent changed to: ${accentKey} (${colorInfo.name})`
+    );
     this._lastSetColorKey = accentKey;
-    this._applyColor(colorInfo.hex);
+    this._applyColor(colorInfo.hex, this._currentAnimation);
 
     if (this._toggle) {
       this._toggle._updateTitle();
@@ -272,41 +423,80 @@ export default class KeyboardAccentSyncExtension {
     }
   }
 
-  _applyColor(hexColor) {
+  _checkOpenRGBAvailability() {
+    try {
+      const [cmdExists] = GLib.spawn_command_line_sync("which openrgb");
+      if (!cmdExists) {
+        log("[KeyboardAccentSync] OpenRGB not found in PATH");
+        return false;
+      }
+
+      const [ok, stdout] = GLib.spawn_command_line_sync(
+        "openrgb --list-devices"
+      );
+      const output = new TextDecoder().decode(stdout || new Uint8Array());
+
+      if (ok && output.includes("Device")) {
+        log("[KeyboardAccentSync] OpenRGB device(s) detected");
+        return true;
+      } else {
+        log("[KeyboardAccentSync] No OpenRGB devices detected");
+        return false;
+      }
+    } catch (e) {
+      log(`[KeyboardAccentSync] Error checking OpenRGB availability: ${e}`);
+      return false;
+    }
+  }
+
+  _applyColor(hexColor, animationMode = "static") {
     const hex = hexColor.replace("#", "");
 
     log(
-      `[KeyboardAccentSync] Applying color: ${hexColor} with brightness: ${this._currentBrightness}`
+      `[KeyboardAccentSync] Applying color: ${hexColor} with animation: ${animationMode} and brightness: ${this._currentBrightness}`
     );
 
     const [cmdExists] = GLib.spawn_command_line_sync("which openrgb");
     if (!cmdExists) {
       log("[KeyboardAccentSync] ERROR: openrgb not found in PATH");
-      this._showNotification("OpenRGB not found", "Please install OpenRGB");
+      this._showNotification(
+        "OpenRGB not found",
+        "Please install OpenRGB to control keyboard RGB"
+      );
       return;
+    }
+
+    const validAnimation = ANIMATION_MODES.some(
+      (mode) => mode.value === animationMode
+    );
+    if (!validAnimation) {
+      log(
+        `[KeyboardAccentSync] Invalid animation mode: ${animationMode}, using static as fallback`
+      );
+      animationMode = "static";
     }
 
     try {
       const [success, , , exitCode] = GLib.spawn_command_line_sync(
-        `openrgb --profile ${PROFILE_NAME} --color ${hex}`
+        `openrgb --profile ${PROFILE_NAME} --mode ${animationMode} --color ${hex}`
       );
 
       if (success && exitCode === 0) {
-        log("[KeyboardAccentSync] Color applied via profile");
+        log("[KeyboardAccentSync] Color and animation applied via profile");
         return;
       }
     } catch (e) {
       log(`[KeyboardAccentSync] Profile method failed: ${e}`);
     }
 
-    const [spawned] = GLib.spawn_async(
+    const [spawned, pid] = GLib.spawn_async(
       null,
       [
         "openrgb",
         "--device",
         DEVICE_ID.toString(),
         "--mode",
-        "static",
+        animationMode,
         "--color",
         hex,
         "--brightness",
@@ -318,12 +508,12 @@ export default class KeyboardAccentSyncExtension {
     );
 
     if (spawned) {
-      log("[KeyboardAccentSync] Color command executed");
+      log("[KeyboardAccentSync] Color and animation command executed");
     } else {
-      log("[KeyboardAccentSync] ERROR: Failed to execute openrgb");
+      log("[KeyboardAccentSync] ERROR: Failed to execute openrgb command");
       this._showNotification(
-        "Failed to set color",
-        "Check OpenRGB configuration"
+        "Failed to control keyboard",
+        "Check OpenRGB installation and device compatibility"
       );
     }
   }
@@ -331,6 +521,7 @@ export default class KeyboardAccentSyncExtension {
   _showNotification(title, message) {
     try {
       Main.notify(title, message);
+      log(`[KeyboardAccentSync] Notification: ${title} - ${message}`);
     } catch (e) {
       log(`[KeyboardAccentSync] Notification failed: ${e}`);
     }
