@@ -4,5 +4,6 @@
   "uuid": "keyboard-accent-color-sync@rusnakdima.github.com",
   "shell-version": ["46", "47", "48", "49"],
   "version": 3,
+  "settings-schema": "org.gnome.shell.extensions.keyboard-accent-color-sync",
   "url": "https://github.com/rusnakdima/KeyboardAccentColorSync"
 }

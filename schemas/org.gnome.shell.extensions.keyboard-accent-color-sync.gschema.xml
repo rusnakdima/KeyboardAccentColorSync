@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="org.gnome.shell.extensions.keyboard-accent-color-sync" path="/org/gnome/shell/extensions/keyboard-accent-color-sync/">
+    <key name="enabled" type="b">
+      <default>true</default>
+      <summary>Enable keyboard accent color sync</summary>
+      <description>Whether to sync keyboard RGB color with GNOME's accent color</description>
+    </key>
+    <key name="sync-mode" type="s">
+      <default>"system"</default>
+      <summary>Sync mode</summary>
+      <description>How to determine the color: system accent or custom</description>
+    </key>
+    <key name="custom-color" type="s">
+      <default>"#3584e4"</default>
+      <summary>Custom color</summary>
+      <description>Hex code for custom color when sync-mode is custom</description>
+    </key>
+    <key name="animation" type="s">
+      <default>"none"</default>
+      <summary>Animation type</summary>
+      <description>Animation effect for keyboard lighting</description>
+    </key>
+  </schema>
+</schemalist>
