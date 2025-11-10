@@ -551,6 +551,8 @@ export default class KeyboardAccentColorSyncExtension extends Extension {
 
     this._indicator?.destroy();
     this._indicator = null;
+
+    this._settings = null;
   }
 
   _updateOpenRGB() {
