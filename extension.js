@@ -1,4 +1,3 @@
-// extension.js
 import GObject from "gi://GObject";
 import Gio from "gi://Gio";
 import GLib from "gi://GLib";
@@ -82,7 +81,6 @@ const ColorItem = GObject.registerClass(
       this._extensionObj = extensionObj;
       this._colorDef = colorDef;
 
-      // Icon/Swatch
       if (colorDef.color) {
         const swatch = new St.Bin({
           style: `background-color: ${colorDef.color}; border-radius: 4px;`,
@@ -93,7 +91,6 @@ const ColorItem = GObject.registerClass(
         });
         this.add_child(swatch);
       } else {
-        // For "System Accent" or "Custom"
         const icon = new St.Icon({
           icon_name:
             colorDef.id === "system"
@@ -107,7 +104,6 @@ const ColorItem = GObject.registerClass(
         this.add_child(icon);
       }
 
-      // Label
       const label = new St.Label({
         text: colorDef.name,
         x_expand: true,
@@ -116,20 +112,16 @@ const ColorItem = GObject.registerClass(
       });
       this.add_child(label);
 
-      // Activate
       this.connect("activate", () => {
         if (colorDef.id === "system") {
           if (this._settings) {
             this._settings.set_string("sync-mode", "system");
           }
-          log(`Selected color: ${colorDef.id} (${colorDef.name})`);
         } else if (colorDef.id === "custom") {
           if (this._settings) {
             this._settings.set_string("sync-mode", "custom");
           }
-          log(`Selected color: ${colorDef.id} (${colorDef.name})`);
 
-          // Create a simple color picker dialog for custom color selection
           this._showCustomColorDialog();
           return;
         } else {
@@ -137,9 +129,6 @@ const ColorItem = GObject.registerClass(
             this._settings.set_string("sync-mode", "custom");
             this._settings.set_string("custom-color", colorDef.color);
           }
-          log(
-            `Selected color: ${colorDef.id} (${colorDef.name}), Hex: ${colorDef.color}`
-          );
         }
         this._updateCallback();
         this._extensionObj._updateOpenRGB();
@@ -147,18 +136,15 @@ const ColorItem = GObject.registerClass(
     }
 
     _showCustomColorDialog() {
-      // Create a simple dialog for entering custom hex color
       const colorDialog = new ModalDialog.ModalDialog({
         styleClass: "prompt-dialog",
       });
 
-      // Title
       const title = new St.Label({
         text: _("Enter Custom Color"),
         style_class: "prompt-dialog-headline",
       });
 
-      // Color input entry
       const colorEntry = new St.Entry({
         text: this._settings
           ? this._settings.get_string("custom-color")
@@ -167,7 +153,6 @@ const ColorItem = GObject.registerClass(
         can_focus: true,
       });
 
-      // Color preview
       const colorPreview = new St.Bin({
         style: `background-color: ${colorEntry.text}; border: 1px solid #fff; border-radius: 4px;`,
         width: 50,
@@ -176,10 +161,8 @@ const ColorItem = GObject.registerClass(
         y_align: Clutter.ActorAlign.CENTER,
       });
 
-      // Update preview when text changes
       colorEntry.clutter_text.connect("text-changed", () => {
         const colorValue = colorEntry.text;
-        // Validate hex color
         if (/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colorValue)) {
           colorPreview.set_style(
             `background-color: ${colorValue}; border: 1px solid #fff; border-radius: 4px;`
@@ -187,7 +170,6 @@ const ColorItem = GObject.registerClass(
         }
       });
 
-      // Content layout
       const contentLayout = new St.BoxLayout({
         vertical: true,
         style: "padding: 20px;",
@@ -205,13 +187,11 @@ const ColorItem = GObject.registerClass(
 
       contentLayout.add_child(entryLayout);
 
-      // Buttons layout
       const buttonsLayout = new St.BoxLayout({
         vertical: false,
         style: "spacing: 10px; margin-top: 15px;",
       });
 
-      // OK button
       const okButton = new St.Button({
         label: _("OK"),
         style_class: "button modal-dialog-button",
@@ -221,19 +201,15 @@ const ColorItem = GObject.registerClass(
       okButton.connect("clicked", () => {
         let colorValue = colorEntry.text.trim();
 
-        // Validate and normalize hex color
         if (
           colorValue &&
           /^#?([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/.test(colorValue)
         ) {
-          // Ensure it starts with #
           if (!colorValue.startsWith("#")) {
             colorValue = "#" + colorValue;
           }
 
-          // Expand 3-digit hex to 6-digit if needed
           if (colorValue.length === 4) {
-            // #RGB format
             colorValue =
               "#" +
               colorValue[1] +
@@ -248,17 +224,14 @@ const ColorItem = GObject.registerClass(
             this._settings.set_string("custom-color", colorValue);
           }
 
-          log(`Custom color set to: ${colorValue}`);
           this._updateCallback();
           this._extensionObj._updateOpenRGB();
           colorDialog.close();
         } else {
-          // Show error or keep dialog open
           colorEntry.set_style("border: 2px solid red;");
         }
       });
 
-      // Cancel button
       const cancelButton = new St.Button({
         label: _("Cancel"),
         style_class: "button modal-dialog-button",
@@ -304,12 +277,10 @@ const AnimationItem = GObject.registerClass(
       });
       this.add_child(label);
 
-      // Activate
       this.connect("activate", () => {
         if (this._settings) {
           this._settings.set_string("animation", animDef.id);
         }
-        log(`Selected animation: ${animDef.id} (${animDef.name})`);
         this._updateCallback();
         this._extensionObj._updateOpenRGB();
       });
@@ -322,7 +293,7 @@ const AnimationItem = GObject.registerClass(
 // ————————————————————————————————————
 const ColorSelectionToggle = GObject.registerClass(
   class ColorSelectionToggle extends QuickSettings.QuickMenuToggle {
-    _init(extensionObject) {
+    _init(extensionObject, settings) {
       super._init({
         title: _("Backlight Keyboard"),
         iconName: "keyboard-brightness-symbolic",
@@ -330,17 +301,13 @@ const ColorSelectionToggle = GObject.registerClass(
       });
 
       this._extension = extensionObject;
-      this._settings = extensionObject.getSettings(
-        "org.gnome.shell.extensions.keyboard-accent-color-sync"
-      );
+      this._settings = settings;
 
-      // Header
       this.menu.setHeader(
         "keyboard-brightness-symbolic",
         _("Keyboard Color Selection")
       );
 
-      // Create a scrollable container for color items
       this._colorScrollView = new St.ScrollView({
         style_class: "keyboard-accent-color-menu-scroll",
         hscrollbar_policy: St.PolicyType.NEVER,
@@ -348,10 +315,8 @@ const ColorSelectionToggle = GObject.registerClass(
         overlay_scrollbars: true,
       });
 
-      // Create a section to hold the color items
       this._colorSection = new PopupMenu.PopupMenuSection();
 
-      // Add color items to the section
       COLORS.forEach((colorDef) => {
         const item = new ColorItem(
           colorDef,
@@ -362,16 +327,12 @@ const ColorSelectionToggle = GObject.registerClass(
         this._colorSection.addMenuItem(item);
       });
 
-      // Add the section to the scroll view
       this._colorScrollView.child = this._colorSection.actor;
 
-      // Set max height to make scrolling visible
       this._colorScrollView.set_style("max-height: 300px;");
 
-      // Add the scrollable view to the menu
       this.menu.box.add_child(this._colorScrollView);
 
-      // Initial state
       this._updateSubtitle();
       this._settings.connect("changed::sync-mode", () =>
         this._updateSubtitle()
@@ -383,7 +344,6 @@ const ColorSelectionToggle = GObject.registerClass(
 
     _updateSubtitle() {
       if (!this._settings) {
-        // Use fallback values if settings are not available
         this.subtitle = _("System Accent (fallback)");
         return;
       }
@@ -418,7 +378,7 @@ const ColorSelectionToggle = GObject.registerClass(
 // ————————————————————————————————————
 const AnimationSelectionToggle = GObject.registerClass(
   class AnimationSelectionToggle extends QuickSettings.QuickMenuToggle {
-    _init(extensionObject) {
+    _init(extensionObject, settings) {
       super._init({
         title: _("Animations Keyboard"),
         iconName: "preferences-system-symbolic",
@@ -426,23 +386,13 @@ const AnimationSelectionToggle = GObject.registerClass(
       });
 
       this._extension = extensionObject;
-      try {
-        this._settings = extensionObject.getSettings(
-          "org.gnome.shell.extensions.keyboard-accent-color-sync"
-        );
-      } catch (e) {
-        // Fallback if settings schema is not available
-        log("Warning: Could not load settings schema, using fallback");
-        this._settings = null;
-      }
+      this._settings = settings;
 
-      // Header
       this.menu.setHeader(
         "preferences-system-symbolic",
         _("Keyboard Animation Selection")
       );
 
-      // Create a scrollable container for animation items
       this._animationScrollView = new St.ScrollView({
         style_class: "keyboard-accent-animation-menu-scroll",
         hscrollbar_policy: St.PolicyType.NEVER,
@@ -450,30 +400,24 @@ const AnimationSelectionToggle = GObject.registerClass(
         overlay_scrollbars: true,
       });
 
-      // Create a section to hold the animation items
       this._animationSection = new PopupMenu.PopupMenuSection();
 
-      // Add animation items to the section
       ANIMATIONS.forEach((animDef) => {
         const item = new AnimationItem(
           animDef,
-          this._settings || this._createFallbackSettings(),
+          this._settings,
           () => this._updateSubtitle(),
           this._extension
         );
         this._animationSection.addMenuItem(item);
       });
 
-      // Add the section to the scroll view
       this._animationScrollView.child = this._animationSection.actor;
 
-      // Set max height to make scrolling visible
       this._animationScrollView.set_style("max-height: 300px;");
 
-      // Add the scrollable view to the menu
       this.menu.box.add_child(this._animationScrollView);
 
-      // Initial state
       this._updateSubtitle();
       if (this._settings) {
         this._settings.connect("changed::animation", () =>
@@ -482,36 +426,8 @@ const AnimationSelectionToggle = GObject.registerClass(
       }
     }
 
-    _createFallbackSettings() {
-      // Create a simple fallback settings object
-      const fallbackSettings = {
-        get_boolean: (key) => {
-          if (key === "enabled") return true; // Default enabled
-          return false;
-        },
-        get_string: (key) => {
-          if (key === "sync-mode") return "system";
-          if (key === "custom-color") return "#3584e4";
-          if (key === "animation") return "none";
-          return "";
-        },
-        set_boolean: (key, value) => {
-          log(`[Fallback] Setting ${key} to ${value}`);
-        },
-        set_string: (key, value) => {
-          log(`[Fallback] Setting ${key} to ${value}`);
-        },
-        connect: (signal, callback) => {
-          // No-op for fallback
-          return null;
-        },
-      };
-      return fallbackSettings;
-    }
-
     _updateSubtitle() {
       if (!this._settings) {
-        // Use fallback value if settings are not available
         this.subtitle = _("None (fallback)");
         return;
       }
@@ -541,13 +457,14 @@ const AnimationSelectionToggle = GObject.registerClass(
 // ————————————————————————————————————
 const ColorSyncIndicator = GObject.registerClass(
   class ColorSyncIndicator extends QuickSettings.SystemIndicator {
-    _init(extensionObject) {
+    _init(extensionObject, settings) {
       super._init();
 
-      // Add both menu items to quick settings items
-      this.quickSettingsItems.push(new ColorSelectionToggle(extensionObject));
       this.quickSettingsItems.push(
-        new AnimationSelectionToggle(extensionObject)
+        new ColorSelectionToggle(extensionObject, settings)
+      );
+      this.quickSettingsItems.push(
+        new AnimationSelectionToggle(extensionObject, settings)
       );
     }
 
@@ -563,87 +480,54 @@ const ColorSyncIndicator = GObject.registerClass(
 // ————————————————————————————————————
 export default class KeyboardAccentColorSyncExtension extends Extension {
   enable() {
-    try {
-      this._settings = this.getSettings();
-    } catch (e) {
-      // Fallback if settings schema is not available
-      log(
-        "Warning: Could not load settings schema, using fallback in main extension"
-      );
-      this._settings = null;
-    }
+    this._settings = this.getSettings();
 
-    this._indicator = new ColorSyncIndicator(this);
+    this._indicator = new ColorSyncIndicator(this, this._settings);
     Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
 
-    // Listen to specific settings changes that affect OpenRGB
-    if (this._settings) {
-      this._settingsChangedId = this._settings.connect(
-        "changed::sync-mode",
-        () => {
-          this._updateOpenRGB();
-        }
-      );
+    this._settingsChangedId = this._settings.connect(
+      "changed::sync-mode",
+      () => {
+        this._updateOpenRGB();
+      }
+    );
 
-      this._settingsCustomColorId = this._settings.connect(
-        "changed::custom-color",
-        () => {
-          this._updateOpenRGB();
-        }
-      );
+    this._settingsCustomColorId = this._settings.connect(
+      "changed::custom-color",
+      () => {
+        this._updateOpenRGB();
+      }
+    );
 
-      this._settingsAnimationId = this._settings.connect(
-        "changed::animation",
-        () => {
-          this._updateOpenRGB();
-        }
-      );
-    }
+    this._settingsAnimationId = this._settings.connect(
+      "changed::animation",
+      () => {
+        this._updateOpenRGB();
+      }
+    );
 
-    // Initial update
     this._updateOpenRGB();
 
-    // Listen for system accent color changes
     this._setupSystemAccentColorListener();
   }
 
-  // Setup listener for system accent color changes
   _setupSystemAccentColorListener() {
-    try {
-      const Gio = imports.gi.Gio;
+    this._interfaceSettings = new Gio.Settings({
+      schema_id: "org.gnome.desktop.interface",
+    });
 
-      // Create a GSettings object for the desktop interface schema
-      this._interfaceSettings = new Gio.Settings({
-        schema_id: "org.gnome.desktop.interface",
-      });
-
-      // Connect to changes in the accent-color key
-      this._accentColorChangedId = this._interfaceSettings.connect(
-        "changed::accent-color",
-        () => {
-          // Only update if we're in system sync mode
-          if (this._settings) {
-            const syncMode = this._settings.get_string("sync-mode");
-            if (syncMode === "system") {
-              log("System accent color changed, updating keyboard");
-              this._updateOpenRGB();
-            }
-          } else {
-            // In fallback mode, always update since we can't check the sync mode
-            log("System accent color changed (fallback), updating keyboard");
-            this._updateOpenRGB();
-          }
+    this._accentColorChangedId = this._interfaceSettings.connect(
+      "changed::accent-color",
+      () => {
+        const syncMode = this._settings.get_string("sync-mode");
+        if (syncMode === "system") {
+          this._updateOpenRGB();
         }
-      );
-
-      log("System accent color listener set up successfully");
-    } catch (e) {
-      log(`Error setting up system accent color listener: ${e.message}`);
-    }
+      }
+    );
   }
 
   disable() {
-    // Disconnect settings change listeners
     if (this._settings && this._settingsChangedId) {
       this._settings.disconnect(this._settingsChangedId);
       this._settingsChangedId = null;
@@ -659,7 +543,6 @@ export default class KeyboardAccentColorSyncExtension extends Extension {
       this._settingsAnimationId = null;
     }
 
-    // Disconnect system accent color listener
     if (this._interfaceSettings && this._accentColorChangedId) {
       this._interfaceSettings.disconnect(this._accentColorChangedId);
       this._accentColorChangedId = null;
@@ -670,137 +553,53 @@ export default class KeyboardAccentColorSyncExtension extends Extension {
     this._indicator = null;
   }
 
-  // Method to update OpenRGB with current settings
   _updateOpenRGB() {
-    let settings;
-    if (this._settings) {
-      settings = this._settings;
-    } else {
-      // Use fallback settings if schema not available
-      settings = this._createFallbackSettings();
-    }
-
-    let enabled, syncMode, animation;
-    try {
-      enabled = settings.get_boolean("enabled");
-      syncMode = settings.get_string("sync-mode");
-      animation = settings.get_string("animation");
-    } catch (e) {
-      // Use fallback values
-      enabled = true;
-      syncMode = "system";
-      animation = "none";
-    }
-
-    log(
-      `_updateOpenRGB called - enabled: ${enabled}, syncMode: ${syncMode}, animation: ${animation}`
-    );
+    const enabled = this._settings.get_boolean("enabled");
+    const syncMode = this._settings.get_string("sync-mode");
+    const animation = this._settings.get_string("animation");
 
     if (!enabled) {
-      log("OpenRGB update skipped - extension disabled");
-      return; // Don't update if disabled
+      return;
     }
 
     let colorToUse;
     if (syncMode === "system") {
-      // Get the actual system accent color
       colorToUse = this._getSystemAccentColor();
     } else {
-      try {
-        colorToUse = settings.get_string("custom-color");
-      } catch (e) {
-        colorToUse = "#3584e4"; // fallback
-      }
+      colorToUse = this._settings.get_string("custom-color");
     }
 
-    log(
-      `About to execute OpenRGB with color: ${colorToUse}, animation: ${animation}`
-    );
-
-    // Execute OpenRGB command to set color
     this._setOpenRGBColor(colorToUse, animation);
   }
 
-  _createFallbackSettings() {
-    // Create a simple fallback settings object
-    const fallbackSettings = {
-      get_boolean: (key) => {
-        if (key === "enabled") return true; // Default enabled
-        return false;
-      },
-      get_string: (key) => {
-        if (key === "sync-mode") return "system";
-        if (key === "custom-color") return "#3584e4";
-        if (key === "animation") return "none";
-        return "";
-      },
-      set_boolean: (key, value) => {
-        log(`[Fallback] Setting ${key} to ${value}`);
-      },
-      set_string: (key, value) => {
-        log(`[Fallback] Setting ${key} to ${value}`);
-      },
-      connect: (signal, callback) => {
-        // No-op for fallback
-        return null;
-      },
-    };
-    return fallbackSettings;
-  }
-
-  // Method to get the system accent color
   _getSystemAccentColor() {
-    try {
-      // Import Gio to access GSettings
-      const Gio = imports.gi.Gio;
+    const interfaceSettings = new Gio.Settings({
+      schema_id: "org.gnome.desktop.interface",
+    });
 
-      // Create a GSettings object for the desktop interface schema
-      const interfaceSettings = new Gio.Settings({
-        schema_id: "org.gnome.desktop.interface",
-      });
+    const accentColorValue = interfaceSettings.get_value("accent-color");
 
-      // Get the accent color value
-      const accentColorValue = interfaceSettings.get_value("accent-color");
+    if (
+      accentColorValue &&
+      !accentColorValue.get_type_string().includes("()")
+    ) {
+      const colorName = accentColorValue.deep_unpack();
 
-      log(
-        `Raw accent color value: ${accentColorValue} (type: ${accentColorValue.get_type_string()})`
-      );
+      const colorMap = SYSTEM_COLOR_MAP;
 
-      if (
-        accentColorValue &&
-        !accentColorValue.get_type_string().includes("()")
-      ) {
-        const colorName = accentColorValue.deep_unpack();
-        log(`Unpacked color name: ${colorName} (type: ${typeof colorName})`);
-
-        // Use the global color map for system accent colors
-        const colorMap = SYSTEM_COLOR_MAP;
-
-        if (colorMap[colorName]) {
-          log(
-            `Mapped color name '${colorName}' to hex: ${colorMap[colorName]}`
-          );
-          return colorMap[colorName];
-        } else {
-          log(`Unknown color name '${colorName}', using default blue`);
-          return "#3584e4"; // Default blue accent
-        }
+      if (colorMap[colorName]) {
+        return colorMap[colorName];
       } else {
-        log("System accent color not set or is empty, using default blue");
-        return "#3584e4"; // Default blue accent
+        return "#3584e4";
       }
-    } catch (e) {
-      log(`Error getting system accent color: ${e.message}, using default`);
-      return "#3584e4"; // Default fallback
+    } else {
+      return "#3584e4";
     }
   }
 
-  // Method to set OpenRGB color
   _setOpenRGBColor(color, animation) {
-    // Remove the '#' symbol from hex color if present
     const hexColor = color.replace("#", "");
 
-    // Build OpenRGB command based on animation type
     let command;
     let args = [];
 
@@ -857,26 +656,12 @@ export default class KeyboardAccentColorSyncExtension extends Extension {
         break;
     }
 
-    // Log the command for debugging
-    log(`Executing OpenRGB command: ${command} at maximum brightness`);
-
-    // Execute the OpenRGB command in a subprocess
-    try {
-      const [success, pid] = GLib.spawn_async(
-        null,
-        args,
-        null,
-        GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
-        null
-      );
-
-      if (!success) {
-        log("Failed to execute OpenRGB command: " + command);
-      } else {
-        log("OpenRGB command executed successfully: PID = " + pid);
-      }
-    } catch (e) {
-      log("Error executing OpenRGB command: " + e.message);
-    }
+    const [_success, _pid] = GLib.spawn_async(
+      null,
+      args,
+      null,
+      GLib.SpawnFlags.SEARCH_PATH | GLib.SpawnFlags.DO_NOT_REAP_CHILD,
+      null
+    );
   }
 }
