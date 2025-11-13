@@ -1,6 +1,6 @@
 {
-  "name": "Keyboard Accent Color Sync",
-  "description": "Synchronizes your keyboard RGB color with GNOME's accent color using OpenRGB. Only updates on actual changes and conditionally adjusts brightness.",
+  "name": "Customization Keyboard Backlight",
+  "description": "Customization of the keyboard backlight via the quick access toolbar, with the ability to synchronize with the accent color selected in the system using OpenRGB",
   "uuid": "keyboard-accent-color-sync@rusnakdima.github.com",
   "shell-version": ["46", "47", "48", "49"],
   "version": 5,
